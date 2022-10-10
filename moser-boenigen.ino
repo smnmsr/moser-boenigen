@@ -107,6 +107,9 @@ void setup() {
   // Red LED
   setRgbLed(255, 0, 0);
 
+  // make sure that there's enough time to flash
+  delay(20000); 
+
   // LoRa module initialization
   if (!modem.begin(EU868)) {
     delayReset();
@@ -135,8 +138,6 @@ void setup() {
 
   // turn off LED
   setRgbLed(0, 0, 0);
-
-  delay(20000);  // make sure that there's enough time to flash
 }
 
 void loop() {
@@ -216,5 +217,5 @@ void loop() {
 
   delay(2000); // make sure one can see the led
   setRgbLed(0, 0, 0);          // dark LED
-  LowPower.deepSleep(MEASUREMENT_TIMEOUT);
+  LowPower.deepSleep(MEASUREMENT_TIMEOUT * 60000);
 }
