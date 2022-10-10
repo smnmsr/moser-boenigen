@@ -19,8 +19,8 @@
 // waiting time before reset and new attempt in milliseconds
 #define RESET_DELAY 600000
 
-// sleep time between two measurements in milliseconds
-#define MEASUREMENT_TIMEOUT 120000
+// sleep time between two measurements minutes
+#define MEASUREMENT_TIMEOUT 2
 
 // minimum sending interval in minutes
 #define MIN_SEND_INTERVAL 120
@@ -146,9 +146,8 @@ void loop() {
   static float humi = 0;
   static uint8_t relais1 = LOW;
   static uint8_t relais2 = LOW;
-  static uint32_t timeSent;
+  static uint16_t measurementsSinceLastTx = 0;
   static bool toSend = false;
-  uint32_t now = millis();
   uint8_t txBuf[4];
   uint8_t rxBuf[1];
 
@@ -157,6 +156,7 @@ void loop() {
 
   // read the sensor values
   sht.readBoth(&temp, &humi);
+  measurementsSinceLastTx++;
 
   // check if there was a temperature change
   if (abs(temp - lastTemp) > TEMP_HYSTERESIS) {
@@ -165,8 +165,9 @@ void loop() {
   }
 
   // check if there has been no message for a long time
-  if (now - timeSent > MIN_SEND_INTERVAL * 60000) {
+  if (measurementsSinceLastTx >= MIN_SEND_INTERVAL / MEASUREMENT_TIMEOUT) {
     toSend = true;
+    measurementsSinceLastTx = 0;
   }
 
   // send and receive if necessary
