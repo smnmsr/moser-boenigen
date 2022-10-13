@@ -54,7 +54,7 @@ void (*resetFunc)(void) = 0;  // create a standard reset function
  * \brief resets the board in RESET_DELAY ms time
  */
 void delayReset(void) {
-  Serial.println("The board will be resetted soon");
+  Serial1.println("The board will be resetted soon");
   delay(RESET_DELAY);
   resetFunc();
 }
@@ -107,15 +107,25 @@ void setup() {
   // Red LED
   setRgbLed(255, 0, 0);
 
+  // Start Serial Connection
+  Serial1.begin(115200);
+  while (!Serial1)
+    ;
+
   // make sure that there's enough time to flash
-  delay(20000); 
+  delay(20000);
+  Serial1.println("\n\nstarting...");
 
   // LoRa module initialization
+  Serial1.print("starting modem ... ");
   if (!modem.begin(EU868)) {
+    Serial1.println("Error");
     delayReset();
   };
+  Serial1.println("OK");
 
   // Join procedure to the network server
+  Serial1.print("join network ... ");
   uint8_t joinAttempts = 0;
   int connected = 0;
   do {
@@ -128,13 +138,18 @@ void setup() {
     }
   } while (joinAttempts <= MAX_ATTEMPTS);
   if (!connected) {
+    Serial1.println("Error");
     delayReset();
   }
+  Serial1.println("OK");
 
   // Sensor start
+  Serial1.print("search sensor ... ");
   if (!sht.begin()) {
+    Serial1.println("Error");
     delayReset();
   }
+  Serial1.println("OK");
 
   // turn off LED
   setRgbLed(0, 0, 0);
@@ -149,8 +164,6 @@ void loop() {
   static uint8_t relais2 = LOW;
   static uint16_t measurementsSinceLastTx = 0;
   static bool toSend = false;
-  uint8_t txBuf[4];
-  uint8_t rxBuf[1];
 
   // Begin Measurement and sending routine
   setRgbLed(0, 255, 0);  // green LED
@@ -158,64 +171,100 @@ void loop() {
   // read the sensor values
   sht.readBoth(&temp, &humi);
   measurementsSinceLastTx++;
+  Serial1.print("Temp: ");
+  Serial1.print(temp, 2);
+  Serial1.print(", Humi: ");
+  Serial1.println(humi, 1);
+
 
   // check if there was a temperature change
   if (abs(temp - lastTemp) > TEMP_HYSTERESIS) {
     toSend = true;
     lastTemp = temp;
+    Serial1.println("Sending due to large temperature change");
   }
 
   // check if there has been no message for a long time
   if (measurementsSinceLastTx >= MIN_SEND_INTERVAL / MEASUREMENT_TIMEOUT) {
     toSend = true;
-    measurementsSinceLastTx = 0;
+    lastTemp = temp;
+    Serial1.println("Sending due to time offset");
   }
 
   // send and receive if necessary
   if (toSend) {
+    uint8_t txBuf[4];
     convertTxData(temp, humi, relais1, relais2, txBuf);
 
     modem.beginPacket();
     modem.write(txBuf, 4);
     toSend = modem.endPacket() ? false : true;
 
+    if (!toSend) {
+      Serial1.print("Sended data: ");
+      Serial1.print(txBuf[0], HEX);
+      Serial1.print(txBuf[1], HEX);
+      Serial1.print(txBuf[2], HEX);
+      Serial1.println(txBuf[3], HEX);
+    } else {
+      Serial1.println("Data could not be sent");
+    }
+
     // check if there is downlonk data availible
-    bool dataReceived = modem.available();
+    delay(2000);  // wait for RX Delays
+    bool dataReceived = modem.available() > 0 ? true : false;
 
     if (dataReceived) {
+      uint8_t rxBuf[30];
+      uint8_t i = 0;
+      uint8_t j = 0;
+      Serial1.println("Data received!");
+
+      while (modem.available()) {
+        rxBuf[i++] = (uint8_t)modem.read();
+      }
+
+      Serial1.print("Received ");
+      Serial1.print(i);
+      Serial1.println(" Bytes:");
+
+      for (j = 0; j < i; j++) {
+        Serial1.print(rxBuf[j], HEX);
+      }
+      Serial1.print("\n");
+
+
       // the received data has the form 0xFF, 0xFE, 0xFD, 0b000000xy where x
 
-      // drop old/wrong rx packets
-      while(modem.read() != 0xFF && modem.available())
-      {
-        ;
-      }
+      // search for the pattern
+      for (j = 0; j < i - 3; j++) {
+        if (rxBuf[j] == 0xFF && rxBuf[j + 1] == 0xFE && rxBuf[j + 2] == 0xFD) {
+          relais1 = rxBuf[j + 3] & 0x1 ? HIGH : LOW;
+          relais2 = rxBuf[j + 3] & 0x2 ? HIGH : LOW;
 
-      // check if the pattern matches
-      if (modem.read() == 0xFE & modem.read() == 0xFD)
-      {
-        // read the actual data and assign it to the relais variables
-        rxBuf[0] = (uint8_t)modem.read();
-        relais1 = rxBuf[0] & 0x1 ? HIGH : LOW;
-        relais2 = rxBuf[0] & 0x2 ? HIGH : LOW;
+          // set the relais
+          digitalWrite(PIN_RELAIS_1, relais1);
+          digitalWrite(PIN_RELAIS_2, relais2);
 
-        // set the relais
-        digitalWrite(PIN_RELAIS_1, relais1);
-        digitalWrite(PIN_RELAIS_2, relais2);
+          // read actual set variables
+          relais1 = digitalRead(PIN_RELAIS_1);
+          relais2 = digitalRead(PIN_RELAIS_2);
 
-        // read actual set variables
-        relais1 = digitalRead(PIN_RELAIS_1);
-        relais2 = digitalRead(PIN_RELAIS_2);
-      }
+          Serial1.println("Relais newly set to:");
+          Serial1.print(relais1);
+          Serial1.println(relais2);
 
-      // drop all data from the rx buffer
-      while (modem.available()) {
-        modem.read();
+          toSend = true; // send update due to new setted relais
+
+          break;
+        }
       }
     }
+
+    measurementsSinceLastTx = 0;
   }
 
-  delay(2000); // make sure one can see the led
-  setRgbLed(0, 0, 0);          // dark LED
+  delay(2000);         // make sure one can see the led
+  setRgbLed(0, 0, 0);  // dark LED
   LowPower.deepSleep(MEASUREMENT_TIMEOUT * 60000);
 }
