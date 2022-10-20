@@ -22,6 +22,9 @@
 // sleep time between two measurements minutes
 #define MEASUREMENT_TIMEOUT 2
 
+// sleep time between tx and rx in seconds
+#define RX_TIMEOUT 10
+
 // minimum sending interval in minutes
 #define MIN_SEND_INTERVAL 120
 
@@ -164,6 +167,7 @@ void loop() {
   static uint8_t relais2 = LOW;
   static uint16_t measurementsSinceLastTx = 0;
   static bool toSend = false;
+  uint32_t now = millis();
 
   // Begin Measurement and sending routine
   setRgbLed(0, 255, 0);  // green LED
@@ -211,7 +215,7 @@ void loop() {
     }
 
     // check if there is downlonk data availible
-    delay(2000);  // wait for RX Delays
+    delay(RX_TIMEOUT);  // wait for RX Delays
     bool dataReceived = modem.available() > 0 ? true : false;
 
     if (dataReceived) {
@@ -266,5 +270,5 @@ void loop() {
 
   delay(2000);         // make sure one can see the led
   setRgbLed(0, 0, 0);  // dark LED
-  LowPower.deepSleep(MEASUREMENT_TIMEOUT * 60000);
+  LowPower.deepSleep(MEASUREMENT_TIMEOUT * 60000 - (millis() - now));
 }
