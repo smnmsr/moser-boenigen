@@ -23,7 +23,7 @@
 #define MEASUREMENT_TIMEOUT 2
 
 // sleep time between tx and rx in seconds
-#define RX_TIMEOUT 10
+#define RX_TIMEOUT 6
 
 // minimum sending interval in minutes
 #define MIN_SEND_INTERVAL 120
@@ -108,7 +108,7 @@ void setup() {
   pinMode(PIN_RELAIS_2, OUTPUT);
 
   // Red LED
-  setRgbLed(255, 0, 0);
+  setRgbLed(255, 255, 0);
 
   // Start Serial Connection
   Serial1.begin(115200);
@@ -170,7 +170,13 @@ void loop() {
   uint32_t now = millis();
 
   // Begin Measurement and sending routine
-  setRgbLed(0, 255, 0);  // green LED
+  // indicate status via led
+  if (relais1 == HIGH) {
+    setRgbLed(0, 255, 0);  // green LED
+  } else {
+    setRgbLed(255, 0, 0);  // red LED
+  }
+
 
   // read the sensor values
   sht.readBoth(&temp, &humi);
@@ -215,7 +221,7 @@ void loop() {
     }
 
     // check if there is downlonk data availible
-    delay(RX_TIMEOUT);  // wait for RX Delays
+    delay(RX_TIMEOUT * 1000);  // wait for RX Delays
     bool dataReceived = modem.available() > 0 ? true : false;
 
     if (dataReceived) {
